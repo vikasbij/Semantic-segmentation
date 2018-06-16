@@ -27,12 +27,12 @@ def _conv1x1(tensor,nb_filters,name):
 
 def _upsample (tensor, kernel_sz, stride, nb_filters,name):
     return tf.layers.conv2d_transpose(tensor,
-                                   nb_filters,
+    							   nb_filters,
                                    kernel_sz,
                                    stride,
-                                   padding='valid',
+                                   padding='same',
                                    name=name,
-                                   kernel_regularizer=tf.contrib.layers.l2_regularizer(1e-3))    
+                                   kernel_regularizer=tf.contrib.layers.l2_regularizer(1e-3))
 
 def load_vgg(sess, vgg_path):
     """
@@ -74,16 +74,18 @@ def layers(vgg_layer3_out, vgg_layer4_out, vgg_layer7_out, num_classes):
     """
     # TODO: Implement function
 
-    layer_7_1x1 = _conv1x1(vgg_layer7_out,num_classes,1,name='conv1x1_layer7')
-    decoder_layer1 = _upsample(layer_7_1x1, k = 4, s = 2, layer_name = 'upsample_layer1')
-    layer_4_1x1 = _conv1x1(vgg_layer4_out,num_classes,1,name='conv1x1_layer4')
-    decoder_add1 = tf.add(decoderlayer_1, layer_4_1x1, name = 'decoder_add_layer1')
-    decoder_layer2 = _upsample(decoder_add1, k = 4, s = 2, layer_name = 'upsample_layer2')
-    layer_3_1x1 = _conv1x1(vgg_layer3_out,num_classes,1,name='conv1x1_layer3')
-    decoder_add2 = tf.add(decoderlayer2, layer_3_1x1, name = 'decoder_add_layer2')
-    decoder_layer_out = _upsample(decoder_add2, k = 16, s = 8, layer_name = 'upsample_layer_out');
+    layer_7_1x1 = _conv1x1(vgg_layer7_out,num_classes,name='conv1x1_layer7')
+    decoder_layer1 = _upsample(layer_7_1x1, 4, 2, num_classes, name = 'upsample_layer1')
+    layer_4_1x1 = _conv1x1(vgg_layer4_out,num_classes,name='conv1x1_layer4')
+    decoder_add1 = tf.add(decoder_layer1, layer_4_1x1, name = 'decoder_add_layer1')
+    decoder_layer2 = _upsample(decoder_add1,4, 2, num_classes, name = 'upsample_layer2')
+    layer_3_1x1 = _conv1x1(vgg_layer3_out,num_classes,name='conv1x1_layer3')
+    decoder_add2 = tf.add(decoder_layer2, layer_3_1x1, name = 'decoder_add_layer2')
+    decoder_layer_out = _upsample(decoder_add2, 16, 8, num_classes, name = 'upsample_layer_out')
 
-return decoder_layer_out
+    return decoder_layer_out
+
+
 tests.test_layers(layers)
 
 
@@ -104,8 +106,9 @@ def optimize(nn_last_layer, correct_label, learning_rate, num_classes):
     cross_entropy = tf.nn.softmax_cross_entropy_with_logits(logits = logits, labels = labels)
     cost = tf.reduce_mean(cross_entropy)
 
-    optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate_ph).minimize(cost)
-    return logits, cost, optimizer
+    optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate).minimize(cost)
+    return logits, optimizer, cost
+
 tests.test_optimize(optimize)
 
 
@@ -125,23 +128,23 @@ def train_nn(sess, epochs, batch_size, get_batches_fn, train_op, cross_entropy_l
     :param learning_rate: TF Placeholder for learning rate
     """
     # TODO: Implement function
-    
+    sess.run(tf.global_variables_initializer())
     for epoch in range(epochs):
-        taining_cost = 0
+        training_cost = 0
         num_batches = 0
         for images, labels in get_batches_fn(batch_size):
             _, loss = sess.run([train_op, cross_entropy_loss], 
-                     feed_dict={input_image:images, correct_label:labels, keep_prob: 0.75, learning_rate: 0.0001})
-            taining_cost += loss
+                     feed_dict={input_image:images, correct_label:labels, keep_prob: 0.75, learning_rate: 0.0007})
+            training_cost += loss
             num_batches+=1
-        print('Loss for Epoch {} is :{}'.format(epoch+1, taining_cost/num_batches))
+        print('Loss for Epoch {} is :{}'.format(epoch+1, training_cost/num_batches))
     
 tests.test_train_nn(train_nn)
 
 
 def run():
     epochs=50
-    batch_size=1
+    batch_size=7
     num_classes = 2
     image_shape = (160, 576)
     data_dir = './data'
@@ -165,9 +168,9 @@ def run():
         # OPTIONAL: Augment Images for better results
         #  https://datascience.stackexchange.com/questions/5224/how-to-prepare-augment-images-for-neural-network
 
-        correct_label = tf.placeholder(tf.float32, [None, image_shape[0], image_shape[1], num_classes])
+        correct_label = tf.placeholder(tf.int32, [None, image_shape[0], image_shape[1], num_classes])
         learning_rate = tf.placeholder(tf.float32)
-        keep_prob = tf.placeholder(tf.float32)
+        # keep_prob = tf.placeholder(tf.float32)
 
         # TODO: Build NN using load_vgg, layers, and optimize function
         image_input, keep_prob, layer3, layer4, layer7 = load_vgg(sess, vgg_path)
@@ -179,13 +182,13 @@ def run():
         logits, train_op, cross_entropy_loss = optimize(model_output, correct_label, learning_rate, num_classes)
 
         train_nn(sess, epochs, batch_size, get_batches_fn, train_op, cross_entropy_loss, image_input,
-                 correct_labels, keep_prob, learning_rate)
+                 correct_label, keep_prob, learning_rate)
 
         # TODO: Save inference data using h elper.save_inference_samples
-        helper.save_inference_samples(runs_dir, data_dir, sess, image_shape, logits, keep_prob, input_image)
+        helper.save_inference_samples(runs_dir, data_dir, sess, image_shape, logits, keep_prob, image_input)
         
         # OPTIONAL: Apply the trained model to a video
 
 
 if __name__ == '__main__':
-    run()  
+    run() 
